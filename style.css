@@ -187,6 +187,9 @@ html, body {
 }
 
 @media (max-width: 768px) {
+  body {
+    overflow: hidden;
+  }
   .chat-container {
       height: 20%;
       width: 90%; /* Full width */
