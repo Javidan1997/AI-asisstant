@@ -381,6 +381,11 @@ function speak(text) {
     return;
   }
 
+  // Cancel any ongoing speech synthesis
+  if (speechSynthesis.speaking) {
+    speechSynthesis.cancel();
+  }
+
   const utterance = new SpeechSynthesisUtterance(text);
   const voices = speechSynthesis.getVoices();
 
@@ -414,6 +419,7 @@ function speak(text) {
   speechSynthesis.speak(utterance);
 }
 
+
 /**
  * 8) Basic Chat Setup
  */
@@ -422,6 +428,13 @@ function setupChat() {
   const chatInput = document.getElementById('chat-input');
   const chatSend = document.getElementById('chat-send');
 
+  // Add voice recognition button
+  const voiceButton = document.createElement('button');
+  voiceButton.className = 'icon-btn';
+  voiceButton.innerHTML = '🎤'; // Microphone icon
+  document.querySelector('.chat-icons').appendChild(voiceButton);
+
+  // Add message to chat
   const addMessageToChat = (sender, text) => {
     const div = document.createElement('div');
     div.className = sender.toLowerCase() === 'assistant' ? 'assistant-msg' : 'user-msg';
@@ -430,22 +443,115 @@ function setupChat() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
   };
 
-  chatSend.addEventListener('click', () => {
+  // Send message (text input)
+  chatSend.addEventListener('click', async () => {
     const userText = chatInput.value.trim();
     if (!userText) return;
 
     // User message
     addMessageToChat('User', userText);
 
-    // For demo, echo it back as “assistant”
-    addMessageToChat('Assistant', userText);
-
-    // Speak that text with lip-sync
-    speak(userText);
-
     // Clear input
     chatInput.value = '';
+
+    try {
+      // Send userText to the API and get response
+      const assistantResponse = await sendMessageToAPI(userText);
+
+      // Assistant's message
+      addMessageToChat('Assistant', assistantResponse);
+
+      // Speak the response with lip-sync
+      speak(assistantResponse);
+    } catch (error) {
+      console.error('Error communicating with API:', error);
+      addMessageToChat('Assistant', 'Sorry, I encountered an error processing your request.');
+      speak('Sorry, I encountered an error processing your request.');
+    }
   });
+
+  // Voice recognition setup
+  const startVoiceRecognition = () => {
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      alert('Speech Recognition is not supported in this browser. Please use Chrome or Edge.');
+      return;
+    }
+
+    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+
+    // Start recognition
+    recognition.start();
+
+    // Voice result
+    recognition.onresult = async (event) => {
+      const transcript = event.results[0][0].transcript.trim();
+      addMessageToChat('User', transcript);
+
+      try {
+        // Send transcript to the API and get response
+        const assistantResponse = await sendMessageToAPI(transcript);
+
+        // Assistant's message
+        addMessageToChat('Assistant', assistantResponse);
+
+        // Speak the response with lip-sync
+        speak(assistantResponse);
+      } catch (error) {
+        console.error('Error communicating with API:', error);
+        addMessageToChat('Assistant', 'Sorry, I encountered an error processing your request.');
+        speak('Sorry, I encountered an error processing your request.');
+      }
+    };
+
+    recognition.onerror = (event) => {
+      console.error('Speech Recognition Error:', event.error);
+      alert('Error with voice recognition: ' + event.error);
+    };
+
+    recognition.onend = () => {
+      console.log('Speech recognition ended.');
+    };
+  };
+
+  // Voice button click
+  voiceButton.addEventListener('click', () => {
+    startVoiceRecognition();
+  });
+}
+
+/**
+ * Sends a POST request to the API with the user's message.
+ * @param {string} message - The user's message to send.
+ * @returns {Promise<string>} - The assistant's response.
+ */
+async function sendMessageToAPI(message) {
+  const apiUrl = 'http://18.208.218.35/bank/transactions/query/'; // Update this to your actual endpoint
+
+  // Define the payload structure based on API requirements
+  const payload = {
+    query: message, // Adjust the key based on API specs
+  };
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // Add any required headers here (e.g., Authorization)
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`API error: ${response.status} ${response.statusText}`);
+  }
+  
+  const data = await response.json();
+
+  // Extract the relevant response text based on API's response structure
+  // Adjust the path as per your API's response
+  return data || 'I did not understand that. Could you please rephrase?';
 }
 
 /**
