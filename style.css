@@ -1,0 +1,188 @@
+/* ========== Global Reset & Body ========== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  html, body {
+    width: 100%;
+    height: 100%;
+    font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: #fff;
+    background-color: #1b1b1b;
+    overflow: hidden;
+  }
+  
+  /* ========== Header / Top Bar ========== */
+  .app-header {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    height: 50px;
+    background: #222;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 999;
+    border-bottom: 1px solid #333;
+  }
+  
+  .header-left {
+    display: flex;
+    align-items: center;
+  }
+  
+  .brand-logo {
+    font-size: 1.5rem;
+    margin-right: 8px;
+  }
+  
+  .brand-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #ddd;
+  }
+  
+  .header-right .header-btn {
+    background: none;
+    border: none;
+    color: #aaa;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+  
+  .header-right .header-btn:hover {
+    color: #fff;
+  }
+  
+  /* ========== Main 3D Scene ========== */
+  #scene-wrapper {
+    position: fixed;
+    width: 100vw;
+    height: calc(100vh - 50px); /* subtract header height */
+    top: 50px;
+    left: 0;
+    overflow: hidden;
+  }
+  
+  #three-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  
+  /* ========== Chat Container ========== */
+  .chat-container {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 320px;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(8px);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 60vh;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  }
+  
+  /* Chat Topbar */
+  .chat-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px;
+    border-bottom: 1px solid #2f2f2f;
+    background: rgba(0, 0, 0, 0.4);
+  }
+  
+  .chat-title {
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  
+  .chat-icons .icon-btn {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 1.2rem;
+    margin-left: 8px;
+    cursor: pointer;
+  }
+  
+  .chat-icons .icon-btn:hover {
+    color: #fff;
+  }
+  
+  /* Chat Messages */
+  .chat-messages {
+    flex: 1;
+    padding: 8px;
+    overflow-y: auto;
+  }
+  
+  .user-msg {
+    margin: 4px 0;
+    color: #0bd;
+  }
+  
+  .assistant-msg {
+    margin: 4px 0;
+    color: #eee;
+  }
+  
+  /* Chat Input Row */
+  .chat-input-row {
+    display: flex;
+    border-top: 1px solid #2f2f2f;
+    background: rgba(0, 0, 0, 0.3);
+  }
+  
+  .chat-input-row input {
+    flex: 1;
+    padding: 8px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #fff;
+    font-size: 0.9rem;
+  }
+  
+  .chat-input-row input::placeholder {
+    color: #888;
+  }
+  
+  .chat-input-row button {
+    width: 60px;
+    background: #0066ff;
+    border: none;
+    color: #fff;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.3s;
+    font-size: 0.9rem;
+  }
+  
+  .chat-input-row button:hover {
+    background: #004ccc;
+  }
+  
+  /* Scrollbar styling (optional) */
+  .chat-messages::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  .chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .chat-messages::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 3px;
+  }
+  

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Advanced 3D Chat Assistant</title>
+  <!-- Make sure your .css is in the correct location relative to this file -->
+  <link rel="stylesheet" href="style.css" />
+  <script type="module" crossorigin src="/AI-asisstant/assets/index-Bs1s6mXf.js"></script>
+</head>
+<body>
+  <!-- Header / Topbar -->
+  <header class="app-header">
+    <div class="header-left">
+      <span class="brand-logo">⚪</span>
+      <h1 class="brand-title">Personal Assistant</h1>
+    </div>
+    <div class="header-right">
+      <button class="header-btn">Menu</button>
+    </div>
+  </header>
+
+  <!-- Scene Wrapper -->
+  <div id="scene-wrapper">
+    <canvas id="three-canvas"></canvas>
+  </div>
+
+  <!-- Chat Container -->
+  <div class="chat-container">
+    <div class="chat-topbar">
+      <div class="chat-title">Assistant</div>
+      <div class="chat-icons">
+        <button class="icon-btn">⚙</button>
+      </div>
+    </div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="chat-input-row">
+      <input
+        type="text"
+        id="chat-input"
+        placeholder="Type your question..."
+      />
+      <button id="chat-send">Send</button>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <!-- Adjust the path to match your folder structure (e.g. 'src/main.js' or just 'main.js') -->
+</body>
+</html>
