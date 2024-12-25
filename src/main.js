@@ -10,6 +10,8 @@ import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { ShaderMaterial } from 'three';
+
 // Optionally you can add FilmPass, SMAAPass, etc. as you like.
 
 let scene, camera, renderer, controls;
@@ -25,8 +27,16 @@ let blinkIndex = null;
 let cheekRaiseIndex = null; 
 let lipCornerDepressIndex = null;
 
+// Optional: Additional morph targets for enhanced expressions
+let jawLeftIndex = null;
+let jawRightIndex = null;
+let tongueOutIndex = null;
+
 // Toggle between sphere environment or room environment:
 const USE_SPHERE_ENV = true; // if false => use RoomEnvironment
+
+// Helper function for smooth interpolation
+const lerp = (a, b, t) => a + (b - a) * t;
 
 /**
  * 1) Initialize 3D Scene
@@ -42,6 +52,8 @@ function initThreeScene() {
   renderer.toneMappingExposure = 0.8;
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   // --- Camera ---
   camera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -51,23 +63,23 @@ function initThreeScene() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.target.set(0, 1.4, 0); // keep the target on the avatar’s head/upper body
-  controls.update();
   controls.enablePan = false;
+  controls.enableZoom = false;
+  controls.enableRotate = false;
 
   // Only allow a small horizontal rotation range (e.g., ±0.15 radians ~ ±8.6 degrees)
   controls.minAzimuthAngle = -0.15;
   controls.maxAzimuthAngle =  0.15;
 
-  // (Optionally) if you want to limit vertical tilt as well:
+  // (Optionally) limit vertical tilt as well:
   controls.minPolarAngle = Math.PI / 2 - 0.3; // ~top angle
   controls.maxPolarAngle = Math.PI / 2 + 0.3; // ~bottom angle
 
-  // Also limit how close/far the camera can orbit:
+  // Limit how close/far the camera can orbit:
   controls.minDistance = 1.0;
   controls.maxDistance = 2.5;
 
   // Keep damping enabled to get smooth transitions
-  controls.enableDamping = true;
   controls.dampingFactor = 0.05;
 
   // --- Environment Setup ---
@@ -91,53 +103,47 @@ function initThreeScene() {
  *    Choose between a 360 Sphere environment or a RoomEnvironment
  */
 function setupEnvironment(renderer) {
-  const rgbeLoader = new RGBELoader();
+  // Create a gradient background using Canvas
+  const gradientCanvas = document.createElement('canvas');
+  const gradientContext = gradientCanvas.getContext('2d');
 
-  rgbeLoader.load(
-    'cayley_interior_4k.hdr',
-    (hdrTexture) => {
-      hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
-      hdrTexture.encoding = THREE.sRGBEncoding;
+  gradientCanvas.width = 512;
+  gradientCanvas.height = 512;
 
-      // Set the HDR texture as the scene's background and environment
-      scene.background = hdrTexture;
-      const pmremGenerator = new THREE.PMREMGenerator(renderer);
-      pmremGenerator.compileEquirectangularShader();
+  // Create a gradient
+  const gradient = gradientContext.createLinearGradient(0, 0, 0, gradientCanvas.height);
+  gradient.addColorStop(0, '#FDEB71'); // Top color (soft yellow)
+  gradient.addColorStop(0.5, '#ABFFA4'); // Middle color (light green)
+  gradient.addColorStop(1, '#8EC5FC'); // Bottom color (light blue)
 
-      const envMap = pmremGenerator.fromEquirectangular(hdrTexture).texture;
-      scene.environment = envMap;
+  gradientContext.fillStyle = gradient;
+  gradientContext.fillRect(0, 0, gradientCanvas.width, gradientCanvas.height);
 
-      // Tone mapping and renderer setup for better exposure and realism
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1; // Adjust for improved brightness and contrast
+  // Convert gradient canvas to a Three.js texture
+  const gradientTexture = new THREE.CanvasTexture(gradientCanvas);
+  gradientTexture.encoding = THREE.sRGBEncoding;
 
-      // Dispose PMREMGenerator (keep hdrTexture as background)
-      pmremGenerator.dispose();
+  // Set the gradient as the background
+  scene.background = gradientTexture;
 
-      // Add spherical world realism (ensure a fully immersive HDR)
-      const sphere = new THREE.Mesh(
-          new THREE.SphereGeometry(500, 100, 100), // Higher segments for smoother sphere
-          new THREE.MeshBasicMaterial({
-              map: hdrTexture,
-          })
-      );
+  // Use PMREMGenerator to generate the environment map
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  pmremGenerator.compileEquirectangularShader();
 
-      // Position the HDR sphere for alignment
-      sphere.position.set(0, -50, -50); // Adjust Y-axis to position HDRI "floor"
-      sphere.scale.set(0.5, 0.5, 0.5); // Slight stretch for better perspective alignment
-      sphere.rotation.y = Math.PI/2;
+  // Create the RoomEnvironment for lighting and reflections
+  const roomEnvironment = new RoomEnvironment();
+  const envMap = pmremGenerator.fromScene(roomEnvironment).texture;
 
-      scene.add(sphere);
-    },
-    undefined,
-    (error) => {
-      console.error('An error occurred loading the HDR file:', error);
-    }
-  );
+  // Set the environment map for the scene
+  scene.environment = envMap;
+
+  // Tone mapping and renderer setup
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.7;
+
+  // Dispose of PMREMGenerator
+  pmremGenerator.dispose();
 }
-
-
-
 
 function setupLights() {
   // Ambient Light
@@ -151,8 +157,6 @@ function setupLights() {
   dirLight.shadow.camera.far = 20;
   dirLight.shadow.mapSize.set(2048, 2048);
   scene.add(dirLight);
-
-
 }
 
 /**
@@ -164,8 +168,8 @@ function loadAvatar() {
     const model = gltf.scene;
 
     // Adjust scale/position to ensure feet on ground, etc.
-    model.scale.set(1.0, 1.0, 1.0);
-    model.position.set(0, -0.1, 0.7);
+    model.scale.set(1.3, 1.3, 1.3);
+    model.position.set(0, -0.6, 0.9);
 
     // Ensure model can cast/receive shadows
     model.traverse((node) => {
@@ -192,7 +196,6 @@ function loadAvatar() {
         // Slight rotation to push arms down. 
         node.rotation.x = THREE.MathUtils.degToRad(70);
       }
-
     });
 
     scene.add(model);
@@ -205,30 +208,41 @@ function loadAvatar() {
         // Gather morphTarget indices
         const dict = avatarMesh.morphTargetDictionary;
         for (let key in dict) {
-          if (key.toLowerCase().includes('mouthopen')) {
+          const lowerKey = key.toLowerCase();
+          if (lowerKey.includes('mouthopen')) {
             mouthOpenIndex = dict[key];
           }
-          if (key.toLowerCase().includes('mouthsmile')) {
+          if (lowerKey.includes('mouthsmile')) {
             mouthSmileIndex = dict[key];
           }
-          if (key.toLowerCase().includes('browraise')) {
+          if (lowerKey.includes('browraise')) {
             eyebrowRaiseIndex = dict[key];
           }
-          if (key.toLowerCase().includes('blink')) {
+          if (lowerKey.includes('blink')) {
             blinkIndex = dict[key];
           }
-          if (key.toLowerCase().includes('cheekraise')) {
+          if (lowerKey.includes('cheekraise')) {
             cheekRaiseIndex = dict[key];
           }
-          if (key.toLowerCase().includes('lipcornerdepress')) {
+          if (lowerKey.includes('lipcornerdepress')) {
             lipCornerDepressIndex = dict[key];
+          }
+
+          // Optional: Additional morph targets
+          if (lowerKey.includes('jawleft')) {
+            jawLeftIndex = dict[key];
+          }
+          if (lowerKey.includes('jawright')) {
+            jawRightIndex = dict[key];
+          }
+          if (lowerKey.includes('tongueout')) {
+            tongueOutIndex = dict[key];
           }
         }
       }
     });
   });
 }
-
 
 /**
  * 5) Post-processing Setup
@@ -239,7 +253,7 @@ function setupPostProcessing() {
   const renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
 
-  // // Simple bloom pass
+  // // Optional: Add UnrealBloomPass for bloom effects
   // const bloomPass = new UnrealBloomPass(
   //   new THREE.Vector2(window.innerWidth, window.innerHeight),
   //   0.6, // strength
@@ -261,7 +275,10 @@ function animate() {
   controls.update();
 
   // Animate morph targets (speaking and idle expressions)
-  if (avatarMesh) updateFacialAnimations();
+  if (avatarMesh) {
+    updateFacialAnimations();
+    updateHeadMovements(); // Optional: Update head movements
+  }
 
   // If using post-processing:
   composer.render();
@@ -270,105 +287,303 @@ function animate() {
   // renderer.render(scene, camera);
 }
 
-
 let nextBlinkTime = 0;
 let blinkDuration = 0.08; // seconds for a full blink (down + up)
 let blinking = false;
 let blinkStartTime = 0;
 
+/**
+ * 7) Enhanced Facial Animations with Smooth Transitions and Additional Expressions
+ */
 function updateFacialAnimations() {
-  const time = performance.now() * 0.001; // seconds
+  const time = performance.now() * 0.001; // Current time in seconds
   if (!avatarMesh) return;
+
+  // Define the speed for different morph animations
+  const blinkSpeed = 5; // Blinking speed
+  const speakSpeed = 10; // Speaking morph speed
+  const idleSpeed = 0.5; // Idle morph speed
 
   // ----------------------------------------
   // 1. Blinking / Idle Expressions
   // ----------------------------------------
   if (!isSpeaking) {
-    // Random blink logic: wait until time > nextBlinkTime
-    if (time > nextBlinkTime && blinkIndex !== null) {
-      blinking = true;
-      blinkStartTime = time;
-      // Schedule next blink ~3-7 seconds from now, random
-      nextBlinkTime = time + 3 + Math.random() * 4;
-    }
+    // Handle Blinking
+    handleBlinking(time, blinkSpeed);
 
-    if (blinking) {
-      // Duration fraction from 0 to 1
-      const elapsed = time - blinkStartTime;
-      const fraction = elapsed / blinkDuration;
-
-      if (fraction < 0.5) {
-        // Closing eyes first half
-        avatarMesh.morphTargetInfluences[blinkIndex] = fraction * 2; // 0 -> 1 over first half
-      } else if (fraction < 1.0) {
-        // Opening eyes second half
-        avatarMesh.morphTargetInfluences[blinkIndex] = (1.0 - fraction) * 2; // 1 -> 0 over second half
-      } else {
-        // End of blink
-        avatarMesh.morphTargetInfluences[blinkIndex] = 0;
-        blinking = false;
-      }
-    }
-
-    // Subtle idle movements: e.g., slight cheek raises or eyebrow wiggles
+    // Subtle Idle Movements
     if (cheekRaiseIndex !== null) {
-      // gentle cyclical motion, amplitude ~0.05
-      avatarMesh.morphTargetInfluences[cheekRaiseIndex] = 0.05 * (Math.sin(time) + 1) / 2;
-    }
-    if (eyebrowRaiseIndex !== null) {
-      // Very subtle movement
-      avatarMesh.morphTargetInfluences[eyebrowRaiseIndex] = 0.05 * Math.sin(time * 0.5);
+      const cheekTarget = 0.03 * Math.sin(time * idleSpeed);
+      avatarMesh.morphTargetInfluences[cheekRaiseIndex] = lerp(
+        avatarMesh.morphTargetInfluences[cheekRaiseIndex],
+        cheekTarget,
+        0.1
+      );
     }
 
-    // Optionally lower lip corners or do other idle expressions
+    if (eyebrowRaiseIndex !== null) {
+      const eyebrowTarget = 0.02 * Math.sin(time * idleSpeed * 1.5);
+      avatarMesh.morphTargetInfluences[eyebrowRaiseIndex] = lerp(
+        avatarMesh.morphTargetInfluences[eyebrowRaiseIndex],
+        eyebrowTarget,
+        0.1
+      );
+    }
+
     if (lipCornerDepressIndex !== null) {
-      avatarMesh.morphTargetInfluences[lipCornerDepressIndex] = 0.02 * (Math.sin(time * 0.7) + 1);
+      const lipTarget = 0.01 * Math.sin(time * idleSpeed * 2);
+      avatarMesh.morphTargetInfluences[lipCornerDepressIndex] = lerp(
+        avatarMesh.morphTargetInfluences[lipCornerDepressIndex],
+        lipTarget,
+        0.1
+      );
     }
   }
 
   // ----------------------------------------
   // 2. Speaking Expressions
   // ----------------------------------------
-  if (isSpeaking && mouthOpenIndex !== null) {
-    // Use a time-based sine wave for mouth opening
-    const mouthOpenValue = Math.abs(Math.sin(time * 5)) * 0.6; 
-    avatarMesh.morphTargetInfluences[mouthOpenIndex] = mouthOpenValue;
+  if (isSpeaking) {
+    // Mouth Opening
+    if (mouthOpenIndex !== null) {
+      const mouthOpenTarget = Math.abs(Math.sin(time * speakSpeed)) * 0.6;
+      avatarMesh.morphTargetInfluences[mouthOpenIndex] = lerp(
+        avatarMesh.morphTargetInfluences[mouthOpenIndex],
+        mouthOpenTarget,
+        0.2
+      );
+    }
 
-    // If mouthSmileIndex exists, vary it for a livelier expression
+    // Mouth Smiling
     if (mouthSmileIndex !== null) {
-      const mouthSmileValue = 0.3 * (Math.sin(time * 2 + 1) + 1) / 2; 
-      avatarMesh.morphTargetInfluences[mouthSmileIndex] = mouthSmileValue;
+      const mouthSmileTarget = 0.3 * Math.abs(Math.sin(time * speakSpeed * 0.5));
+      avatarMesh.morphTargetInfluences[mouthSmileIndex] = lerp(
+        avatarMesh.morphTargetInfluences[mouthSmileIndex],
+        mouthSmileTarget,
+        0.2
+      );
     }
 
-    // Raise eyebrows a bit while speaking
+    // Eyebrow Raising
     if (eyebrowRaiseIndex !== null) {
-      const eyebrowValue = 0.2 * (Math.sin(time * 1.5) + 1) / 2;
-      avatarMesh.morphTargetInfluences[eyebrowRaiseIndex] = eyebrowValue;
+      const eyebrowTarget = 0.15 * Math.abs(Math.sin(time * speakSpeed * 0.75));
+      avatarMesh.morphTargetInfluences[eyebrowRaiseIndex] = lerp(
+        avatarMesh.morphTargetInfluences[eyebrowRaiseIndex],
+        eyebrowTarget,
+        0.2
+      );
     }
 
-    // Additional advanced expressions (e.g., cheek raise while speaking)
+    // Cheek Raising
     if (cheekRaiseIndex !== null) {
-      avatarMesh.morphTargetInfluences[cheekRaiseIndex] = 0.15 * (Math.sin(time * 3) + 1) / 2;
+      const cheekTarget = 0.1 * Math.abs(Math.sin(time * speakSpeed * 1.5));
+      avatarMesh.morphTargetInfluences[cheekRaiseIndex] = lerp(
+        avatarMesh.morphTargetInfluences[cheekRaiseIndex],
+        cheekTarget,
+        0.2
+      );
     }
 
-    // Lower lip corners more dynamically
+    // Lip Corner Depression
     if (lipCornerDepressIndex !== null) {
-      avatarMesh.morphTargetInfluences[lipCornerDepressIndex] = 0.1 * (Math.sin(time * 4) + 1) / 2;
+      const lipTarget = 0.05 * Math.abs(Math.sin(time * speakSpeed * 2));
+      avatarMesh.morphTargetInfluences[lipCornerDepressIndex] = lerp(
+        avatarMesh.morphTargetInfluences[lipCornerDepressIndex],
+        lipTarget,
+        0.2
+      );
+    }
+
+    // Optional: Additional Morph Targets (e.g., jaw movements)
+    if (jawLeftIndex !== null) {
+      const jawLeftTarget = 0.05 * Math.abs(Math.sin(time * speakSpeed * 1.2));
+      avatarMesh.morphTargetInfluences[jawLeftIndex] = lerp(
+        avatarMesh.morphTargetInfluences[jawLeftIndex],
+        jawLeftTarget,
+        0.2
+      );
+    }
+
+    if (jawRightIndex !== null) {
+      const jawRightTarget = 0.05 * Math.abs(Math.sin(time * speakSpeed * 1.2));
+      avatarMesh.morphTargetInfluences[jawRightIndex] = lerp(
+        avatarMesh.morphTargetInfluences[jawRightIndex],
+        jawRightTarget,
+        0.2
+      );
+    }
+
+    if (tongueOutIndex !== null) {
+      const tongueOutTarget = 0.02 * Math.abs(Math.sin(time * speakSpeed * 1.5));
+      avatarMesh.morphTargetInfluences[tongueOutIndex] = lerp(
+        avatarMesh.morphTargetInfluences[tongueOutIndex],
+        tongueOutTarget,
+        0.2
+      );
     }
   }
 
   // ----------------------------------------
   // 3. Non-Speaking Cleanup
   // ----------------------------------------
-  else if (!isSpeaking) {
-    // If speaking just ended, ensure mouth is reset
+  if (!isSpeaking) {
+    // Reset Speaking Morphs Smoothly
+    resetSpeakingMorphs();
+  }
+}
+
+/**
+ * Handle Blinking with Smooth Transitions
+ */
+function handleBlinking(time, speed) {
+  if (time > nextBlinkTime && blinkIndex !== null && !blinking) {
+    blinking = true;
+    blinkStartTime = time;
+    // Schedule next blink ~3-7 seconds from now
+    nextBlinkTime = time + 4 + Math.random() * 4;
+  }
+
+  if (blinking) {
+    const elapsed = time - blinkStartTime;
+    const fraction = elapsed / blinkDuration;
+
+    if (fraction < 0.5) {
+      // Closing eyes
+      avatarMesh.morphTargetInfluences[blinkIndex] = lerp(
+        avatarMesh.morphTargetInfluences[blinkIndex],
+        1,
+        0.2
+      );
+    } else if (fraction < 1.0) {
+      // Opening eyes
+      avatarMesh.morphTargetInfluences[blinkIndex] = lerp(
+        avatarMesh.morphTargetInfluences[blinkIndex],
+        0,
+        0.2
+      );
+    } else {
+      // End of blink
+      avatarMesh.morphTargetInfluences[blinkIndex] = 0;
+      blinking = false;
+    }
+  }
+}
+
+function handleDeviceOrientation(event) {
+  if (!avatarMesh) return;
+
+  // Adjust the path to the head based on your model's hierarchy
+  const head = avatarMesh.parent; // Modify if necessary
+  if (!head) return;
+
+  const rotationFactor = 0.01; // Adjust to control sensitivity
+  const maxRotation = Math.PI / 8; // Limit head rotation to ±22.5 degrees
+
+  // Use the gamma value (left/right tilt) to rotate the head on the Y-axis
+  const gamma = event.gamma || 0; // Gamma: left-to-right tilt in degrees
+  head.rotation.y = THREE.MathUtils.clamp(gamma * rotationFactor, -maxRotation, maxRotation);
+
+  // Optionally use the beta value (forward/backward tilt) for the X-axis
+  const beta = event.beta || 0; // Beta: front-to-back tilt in degrees
+  head.rotation.x = THREE.MathUtils.clamp(beta * rotationFactor, -maxRotation, maxRotation);
+}
+
+/**
+ * Gradually Reset Speaking Morphs to Neutral
+ */
+function resetSpeakingMorphs() {
+  const resetSpeed = 0.05; // Adjust for smoother transition
+
+  if (avatarMesh) {
     if (mouthOpenIndex !== null) {
-      avatarMesh.morphTargetInfluences[mouthOpenIndex] = 0;
+      avatarMesh.morphTargetInfluences[mouthOpenIndex] = lerp(
+        avatarMesh.morphTargetInfluences[mouthOpenIndex],
+        0,
+        resetSpeed
+      );
     }
     if (mouthSmileIndex !== null) {
-      avatarMesh.morphTargetInfluences[mouthSmileIndex] = 0;
+      avatarMesh.morphTargetInfluences[mouthSmileIndex] = lerp(
+        avatarMesh.morphTargetInfluences[mouthSmileIndex],
+        0,
+        resetSpeed
+      );
     }
-    // Eyebrow / cheek / other idle morphs are handled above
+    if (eyebrowRaiseIndex !== null) {
+      avatarMesh.morphTargetInfluences[eyebrowRaiseIndex] = lerp(
+        avatarMesh.morphTargetInfluences[eyebrowRaiseIndex],
+        0,
+        resetSpeed
+      );
+    }
+    if (cheekRaiseIndex !== null) {
+      avatarMesh.morphTargetInfluences[cheekRaiseIndex] = lerp(
+        avatarMesh.morphTargetInfluences[cheekRaiseIndex],
+        0,
+        resetSpeed
+      );
+    }
+    if (lipCornerDepressIndex !== null) {
+      avatarMesh.morphTargetInfluences[lipCornerDepressIndex] = lerp(
+        avatarMesh.morphTargetInfluences[lipCornerDepressIndex],
+        0,
+        resetSpeed
+      );
+    }
+
+    // Optional: Reset additional morph targets
+    if (jawLeftIndex !== null) {
+      avatarMesh.morphTargetInfluences[jawLeftIndex] = lerp(
+        avatarMesh.morphTargetInfluences[jawLeftIndex],
+        0,
+        resetSpeed
+      );
+    }
+    if (jawRightIndex !== null) {
+      avatarMesh.morphTargetInfluences[jawRightIndex] = lerp(
+        avatarMesh.morphTargetInfluences[jawRightIndex],
+        0,
+        resetSpeed
+      );
+    }
+    if (tongueOutIndex !== null) {
+      avatarMesh.morphTargetInfluences[tongueOutIndex] = lerp(
+        avatarMesh.morphTargetInfluences[tongueOutIndex],
+        0,
+        resetSpeed
+      );
+    }
+  }
+}
+
+/**
+ * Optional: Add Head Movements for Enhanced Realism
+ */
+function updateHeadMovements() {
+  if (!avatarMesh) return;
+
+  // Adjust the path to the head based on your model's hierarchy
+  const head = avatarMesh.parent; // Modify if necessary
+  if (!head) return;
+
+  const time = performance.now() * 0.001;
+
+  if (isSpeaking) {
+    // Slight nodding while speaking
+    head.rotation.x = lerp(
+      head.rotation.x,
+      0.02 * Math.sin(time * 2), // Adjust amplitude and speed as needed
+      0.1
+    );
+    head.rotation.y = lerp(
+      head.rotation.y,
+      0.02 * Math.sin(time * 1.5),
+      0.1
+    );
+  } else {
+    // Return to neutral position
+    head.rotation.x = lerp(head.rotation.x, 0, 0.1);
+    head.rotation.y = lerp(head.rotation.y, 0, 0.1);
   }
 }
 
@@ -408,17 +623,12 @@ function speak(text) {
 
   utterance.onend = () => {
     isSpeaking = false;
-    // Reset morphs to neutral
-    if (avatarMesh) {
-      if (mouthOpenIndex !== null) avatarMesh.morphTargetInfluences[mouthOpenIndex] = 0;
-      if (mouthSmileIndex !== null) avatarMesh.morphTargetInfluences[mouthSmileIndex] = 0;
-      if (eyebrowRaiseIndex !== null) avatarMesh.morphTargetInfluences[eyebrowRaiseIndex] = 0;
-    }
+    // Gradually reset morphs to neutral
+    resetSpeakingMorphs();
   };
 
   speechSynthesis.speak(utterance);
 }
-
 
 /**
  * 8) Basic Chat Setup
@@ -527,7 +737,7 @@ function setupChat() {
  * @returns {Promise<string>} - The assistant's response.
  */
 async function sendMessageToAPI(message) {
-  const apiUrl = 'http://18.208.218.35/bank/transactions/query/'; // Update this to your actual endpoint
+  const apiUrl = 'https://18.208.218.35:443/bank/transactions/query/'; // Update this to your actual endpoint
 
   // Define the payload structure based on API requirements
   const payload = {
@@ -548,6 +758,7 @@ async function sendMessageToAPI(message) {
   }
   
   const data = await response.json();
+  console.log(data)
 
   // Extract the relevant response text based on API's response structure
   // Adjust the path as per your API's response
@@ -562,6 +773,12 @@ function onWindowResize() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer.setSize(window.innerWidth, window.innerHeight); // If using post-proc
+}
+
+if (window.DeviceOrientationEvent) {
+  window.addEventListener('deviceorientation', handleDeviceOrientation);
+} else {
+  console.warn('DeviceOrientationEvent is not supported by this browser.');
 }
 
 /**
